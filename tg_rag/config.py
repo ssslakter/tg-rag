@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from os import getenv
 
+
 @dataclass
 class Config:
     book_url: str = "https://github.com/MenshikovDmitry/TSU_AI_Course/raw/main/module_4.%20RAG/Bulgakov_Mihail_Master_i_Margarita_Readli.Net_bid256_5c1f5.txt.zip"
