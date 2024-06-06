@@ -14,6 +14,9 @@ dependencies = ['aiogram', 'requests', 'elasticsearch', 'fastprogress']
 Homepage = "https://github.com/ssslakter/tg-rag"
 Issues = "https://github.com/ssslakter/tg-rag/issues"
 
+[project.scripts]
+extract-data = "tg_rag.data_extraction:main"
 
 [tool.setuptools]
 packages = ["tg_rag"]
+
