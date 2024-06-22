@@ -8,15 +8,15 @@ version = "0.0.1"
 authors = [{ name = "Slava Chaunin", email = "slava.chaunin@gmail.com" }]
 description = "A small telegram bot with RAG"
 readme = "README.md"
-dependencies = ['aiogram', 'requests', 'elasticsearch', 'fastprogress']
+dependencies = ['aiogram', 'requests', 'elasticsearch', 'fastprogress', 'sentence-transformers']
 
 [project.urls]
 Homepage = "https://github.com/ssslakter/tg-rag"
 Issues = "https://github.com/ssslakter/tg-rag/issues"
 
 [project.scripts]
-rag_extract-data = "tg_rag.data_extraction:main"
-rag_start-bot = "tg_rag.bot"
+rag_extract-data = "tg_rag.preprocess.data_extraction:main"
+rag_start = "tg_rag.bot:main"
 
 [tool.setuptools]
 packages = ["tg_rag"]

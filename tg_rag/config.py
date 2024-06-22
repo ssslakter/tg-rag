@@ -10,3 +10,6 @@ class Config:
     api_token: str = getenv("HF_TOKEN", None)
     api_url: str = "https://api-inference.huggingface.co/models/TheBloke/Llama-2-7B-GGML"
     bot_token: str = getenv("BOT_TOKEN", None)
+    ask_llm_query: bool = False
+    max_docs: int = 5
+    embedding_model: str = "cointegrated/rubert-tiny2"

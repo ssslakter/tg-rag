@@ -1,4 +1,5 @@
 from openai import OpenAI
+
 from tg_rag.config import Config
 
 
@@ -20,5 +21,6 @@ class LLM:
                 {"role": "user", "content": message},
             ],
             stream=False,
-            max_tokens=500
+            max_tokens=500,
+            temperature=0.4
         )
