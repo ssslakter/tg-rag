@@ -1,3 +1,4 @@
+import numpy as np
 from fastprogress import progress_bar
 from sentence_transformers import SentenceTransformer
 
@@ -8,8 +9,11 @@ class Embedder:
         self.encoder = SentenceTransformer(model_name)
 
     def __call__(self, texts: list):
+        if isinstance(texts, str): return [self.encoder.encode(texts)]
+        res = []
         for i in progress_bar(range(0, len(texts), self.bs)):
-            yield from self.encoder.encode(texts[i:min(i + self.bs, len(texts))])
+            res += [self.encoder.encode(texts[i:min(i + self.bs, len(texts))], batch_size=self.bs)]
+        return np.concatenate(res)
 
     @property
     def dim(self):

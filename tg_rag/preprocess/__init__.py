@@ -9,6 +9,8 @@ from .text_parsing import parse_book
 @call_parse
 def main(db:str="qdrant",  # "Database to use: elastic or qdrant"
          embedding_model: str ="cointegrated/rubert-tiny2",  # "Sentence transformer model to use"
+         max_words: int = 50,  # "Maximum number of words in a paragraph"
+         min_words: int = 20,  # "Minimum number of words in a paragraph"
          ):
     from ..config import Config
     from ..embedding import Embedder
@@ -27,10 +29,10 @@ def main(db:str="qdrant",  # "Database to use: elastic or qdrant"
     
     log.info(f"Downloading book from {cfg.book_url}")
     book = download_book(cfg.book_url)
-    paragraphs = parse_book(book)
+    paragraphs = parse_book(book, max_words, min_words)
     
     log.info(f"Extracting embeddings for {len(paragraphs)} paragraphs")
-    embeddings = list(embed(paragraphs))
+    embeddings = embed(paragraphs)
     
     log.info(f"Adding {len(embeddings)} paragraphs to the database")
     client.add(embeddings, paragraphs)

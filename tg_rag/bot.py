@@ -1,20 +1,18 @@
 import asyncio
 import logging as l
-from fastcore.all import call_parse
 
 from aiogram import Bot, Dispatcher, html
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.types import Message
+from fastcore.all import call_parse
 
+from tg_rag.config import Config
 from tg_rag.database import get_db
 from tg_rag.embedding import Embedder
-
-from .config import Config
-from .llm import LLM
-from .utils import init_logger
-
+from tg_rag.llm import LLM
+from tg_rag.utils import init_logger
 
 dp = Dispatcher()
 
@@ -51,7 +49,8 @@ async def rag_handler(message: Message) -> None:
                        ) if cfg.ask_llm_query else message.text
     
     log.info(f"Query for db is: {query}")
-    docs, scores = db.search(query, cfg.max_docs)
+    emb = embedder(query)[0]
+    docs, scores = db.search(emb, query, cfg.max_docs)
 
     log.info(f"Found {len(docs)} relevant paragraphs")
     log.debug(f"Scores are: {scores}")
@@ -60,7 +59,7 @@ async def rag_handler(message: Message) -> None:
     log.debug(f"Found docs:\n{concat_docs}")
     ans = llm.prompt(message.text, message.text + answer_system_prompt + concat_docs)
     try:
-        await message.reply(ans.choices[0].message.content)
+        await message.reply(ans)
     except TypeError:
         await message.answer("Unexpected error occurred. Please try again later.")
 
@@ -71,14 +70,14 @@ def main(db_name: str = "qdrant",  # "Database to use: elastic or qdrant"
          api_url: str = "http://localhost:11434",  # "URL of the LLM API"
          ):
     init_logger("tg_rag", level=l.DEBUG)
-    global llm, cfg, db
+    global llm, cfg, db, embedder
     cfg = Config(embedding_model=embedding_model, api_url=api_url)
     
     log.info(f"Using {cfg.embedding_model} for embeddings")
-    embed = Embedder(cfg.embedding_model)
+    embedder = Embedder(cfg.embedding_model)
     
     log.info(f"Connecting to {db_name}")
-    db = get_db(embed, db_name)
+    db = get_db(embedder, db_name, override=False)
     
     log.info(f"Connecting to LLM on {cfg.api_url}")
     llm = LLM(cfg)

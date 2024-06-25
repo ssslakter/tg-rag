@@ -53,12 +53,13 @@ class ElasticEngine(SearchEngine):
             'embedding': emb,
         } for doc, emb in zip(documents, embeddings)])
 
-    def search(self, query, max_docs: int = 50, k: int = 10):
-        if not index_name: index_name = self.idx_name
-        res = self.client.search(index=index_name,
+    def search(self, embedding, query, max_docs: int = 50, k: int = 10):
+        if embedding is None:
+            return self.search_text(query, max_docs)
+        res = self.client.search(index=self.cfg.index_name,
                                  knn={
                                      'field': 'embedding',
-                                     'query_vector': query,
+                                     'query_vector': embedding,
                                      'num_candidates': max_docs,
                                      'k': k,
                                  }

@@ -38,9 +38,9 @@ def merge_short_paragraphs(paragraphs, min_words=50, max_words=500):
     return result
 
 
-def parse_book(book):
+def parse_book(book, max_words=50, min_words=20):
     book = book[book.find("ЧАСТЬ ПЕРВАЯ"):]
     paragraphs = [t for t in book.split("\r\n") if t != '']
-    paragraphs = merge_dialogs(paragraphs, 100)
-    paragraphs = merge_short_paragraphs(paragraphs, 80, 150)
+    paragraphs = merge_dialogs(paragraphs, max_words)
+    paragraphs = merge_short_paragraphs(paragraphs, min_words, max_words)
     return paragraphs

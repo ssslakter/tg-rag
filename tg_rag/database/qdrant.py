@@ -15,7 +15,7 @@ class QdrantConfig:
     url: str = "http://localhost:6333"
     collection_name: str = "my_collection"
     embedding_size: int = 768
-    override: bool = False
+    override: bool = True
     bs: int = 64
 
 
@@ -31,8 +31,8 @@ class QdrantEngine(SearchEngine):
                                                 distance=models.Distance.COSINE
                                             ))
 
-    def search(self, query, max_docs: int = 50):
-        hits = self.client.search(self.cfg.collection_name, query, limit=max_docs)
+    def search(self, embedding, query, max_docs: int = 50):
+        hits = self.client.search(self.cfg.collection_name, embedding, limit=max_docs)
         return zip(*((hit.payload["text"], hit.score) for hit in hits))
 
     def add(self, embeddings: list, documents: list):

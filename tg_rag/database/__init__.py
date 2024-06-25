@@ -13,6 +13,8 @@ configs = {
 }
 
 
-def get_db(embedder, name: str, cfg=None) -> SearchEngine:
-    if not cfg: cfg = configs[name](embedding_size=embedder.dim)
+def get_db(embedder, name: str, **kwargs) -> SearchEngine:
+    cfg = configs[name](embedding_size=embedder.dim)
+    for k, v in kwargs.items():
+        setattr(cfg, k, v)
     return engines[name](cfg)
