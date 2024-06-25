@@ -15,7 +15,7 @@ Homepage = "https://github.com/ssslakter/tg-rag"
 Issues = "https://github.com/ssslakter/tg-rag/issues"
 
 [project.scripts]
-rag_extract-data = "tg_rag.preprocess.data_extraction:main"
+rag_extract-data = "tg_rag.preprocess:main"
 rag_start = "tg_rag.bot:main"
 
 [tool.setuptools]

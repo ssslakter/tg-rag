@@ -23,4 +23,4 @@ class LLM:
             stream=False,
             max_tokens=500,
             temperature=0.4
-        )
+        ).choices[0].message.content

@@ -43,3 +43,4 @@ def parse_book(book):
     paragraphs = [t for t in book.split("\r\n") if t != '']
     paragraphs = merge_dialogs(paragraphs, 100)
     paragraphs = merge_short_paragraphs(paragraphs, 80, 150)
+    return paragraphs

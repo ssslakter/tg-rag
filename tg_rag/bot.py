@@ -1,5 +1,6 @@
 import asyncio
 import logging as l
+from fastcore.all import call_parse
 
 from aiogram import Bot, Dispatcher, html
 from aiogram.client.default import DefaultBotProperties
@@ -7,17 +8,15 @@ from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.types import Message
 
+from tg_rag.database import get_db
+from tg_rag.embedding import Embedder
+
 from .config import Config
 from .llm import LLM
-from .search import vector
-from .search.text import Search
 from .utils import init_logger
 
-cfg = Config()
+
 dp = Dispatcher()
-llm = LLM(cfg)
-search = Search(cfg)
-# search = vector.Search("vec_index", cfg)
 
 log = l.getLogger(__name__)
 
@@ -45,32 +44,44 @@ async def command_start_handler(message: Message) -> None:
 
 @dp.message()
 async def rag_handler(message: Message) -> None:
-    
+
     log.info(f"Received message: {message.text}")
+
+    query = llm.prompt(message.text, question_system_prompt
+                       ) if cfg.ask_llm_query else message.text
     
-    if cfg.ask_llm_query:
-        res = llm.prompt(message.text, question_system_prompt)
-        query = res.choices[0].message.content
-    else: query = message.text
-    
-    log.info(f"Query for elastic is: {query}")
-    # docs, scores = search.search(query, cfg.max_docs)
-    docs, scores = search.knn_search(query)
-    
+    log.info(f"Query for db is: {query}")
+    docs, scores = db.search(query, cfg.max_docs)
+
     log.info(f"Found {len(docs)} relevant paragraphs")
     log.debug(f"Scores are: {scores}")
-    
+
     concat_docs = "\n\n".join([f"### {i+1}\n\n{s}" for i, s in enumerate(docs)])
     log.debug(f"Found docs:\n{concat_docs}")
-    ans = llm.prompt(message.text, message.text+answer_system_prompt+concat_docs)
+    ans = llm.prompt(message.text, message.text + answer_system_prompt + concat_docs)
     try:
         await message.reply(ans.choices[0].message.content)
     except TypeError:
         await message.answer("Unexpected error occurred. Please try again later.")
 
 
-def main():
+@call_parse
+def main(db_name: str = "qdrant",  # "Database to use: elastic or qdrant"
+         embedding_model: str = "cointegrated/rubert-tiny2",  # "Sentence transformer model to use"
+         api_url: str = "http://localhost:11434",  # "URL of the LLM API"
+         ):
     init_logger("tg_rag", level=l.DEBUG)
+    global llm, cfg, db
+    cfg = Config(embedding_model=embedding_model, api_url=api_url)
+    
+    log.info(f"Using {cfg.embedding_model} for embeddings")
+    embed = Embedder(cfg.embedding_model)
+    
+    log.info(f"Connecting to {db_name}")
+    db = get_db(embed, db_name)
+    
+    log.info(f"Connecting to LLM on {cfg.api_url}")
+    llm = LLM(cfg)
     log.info("Starting the bot...")
     bot = Bot(token=cfg.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 
