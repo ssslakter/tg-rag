@@ -8,9 +8,6 @@ from aiogram.filters import CommandStart
 from aiogram.types import Message
 from fastcore.all import call_parse
 
-from tg_rag.config import Config
-from tg_rag.database import get_db
-from tg_rag.embedding import Embedder
 from tg_rag.llm import LLM
 from tg_rag.utils import init_logger
 
@@ -28,7 +25,7 @@ question_system_prompt = """
 answer_system_prompt = """
 Ответьте на вопрос, основываясь на извлеченных абзацах ниже, укажите номер(а) параграфа(ов), подтверждающих ваш ответ.
 Если вопрос нельзя ответить на основе контекста, скажите "Я не знаю".
-Ответ давайте только на русском языке.
+Внимательно вчитывайся в смысл предложений. Отвечай на русском
 """
 
 
@@ -68,10 +65,15 @@ async def rag_handler(message: Message) -> None:
 def main(db_name: str = "qdrant",  # "Database to use: elastic or qdrant"
          embedding_model: str = "cointegrated/rubert-tiny2",  # "Sentence transformer model to use"
          api_url: str = "http://localhost:11434",  # "URL of the LLM API"
+         model: str = "llama3",  # "Model to use for LLM"
          ):
+    from tg_rag.config import Config
+    from tg_rag.database import get_db
+    from tg_rag.embedding import Embedder
+    
     init_logger("tg_rag", level=l.DEBUG)
     global llm, cfg, db, embedder
-    cfg = Config(embedding_model=embedding_model, api_url=api_url)
+    cfg = Config(embedding_model=embedding_model, api_url=api_url, model=model)
     
     log.info(f"Using {cfg.embedding_model} for embeddings")
     embedder = Embedder(cfg.embedding_model)
