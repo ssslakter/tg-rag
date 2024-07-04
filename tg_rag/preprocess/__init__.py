@@ -25,7 +25,7 @@ def main(db:str="qdrant",  # "Database to use: elastic or qdrant"
     embed = Embedder(embedding_model)
     
     log.info(f"Connecting to {db}")
-    client = get_db(embed, db)
+    client = get_db(embed.dim, db)
     
     log.info(f"Downloading book from {cfg.book_url}")
     book = download_book(cfg.book_url)

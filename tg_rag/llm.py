@@ -1,7 +1,9 @@
 from openai import OpenAI
-
+import logging as l
 from tg_rag.config import Config
 
+
+log = l.getLogger(__name__)
 
 class LLM:
     def __init__(self, cfg: Config):
@@ -12,6 +14,8 @@ class LLM:
         )
 
     def prompt(self, message: str, system_prompt: str):
+        log.debug(f"System prompt: {system_prompt}")
+        log.debug(f"Prompting with message: {message}")
         return self.client.chat.completions.create(
             model=self.cfg.model,
             messages=[

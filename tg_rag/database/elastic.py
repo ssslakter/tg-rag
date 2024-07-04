@@ -15,6 +15,7 @@ class ElasticConfig:
     es_creds: tuple = ("elastic", "elastic")
     index_name: str = "my_index"
     embedding_size: int = 768
+    override: bool = True
 
 
 class ElasticEngine(SearchEngine):
@@ -24,7 +25,10 @@ class ElasticEngine(SearchEngine):
                                     basic_auth=client_cfg.es_creds,
                                     verify_certs=False)
         self.cfg = client_cfg
-        self._create_index()
+        if self.cfg.override:
+            self.client.indices.delete(index=self.cfg.index_name, ignore=[400, 404])
+        if not self.client.indices.exists(index=self.cfg.index_name):
+            self._create_index()
 
     def _create_index(self):
         idx_name = self.cfg.index_name
@@ -47,11 +51,14 @@ class ElasticEngine(SearchEngine):
         log.info(f"Index {idx_name} created.")
 
     def add(self, embeddings: list, documents: list):
-        return self.client.bulk(operations=[{
-            '_index': self.cfg.index_name,
-            'text': doc,
-            'embedding': emb,
-        } for doc, emb in zip(documents, embeddings)])
+        ops = []
+        for doc, emb in zip(documents, embeddings):
+            ops.append({'index': {'_index': self.cfg.index_name}})
+            ops.append({
+                'text': doc,
+                'embedding': emb,
+            })
+        return self.client.bulk(operations=ops, refresh=True)
 
     def search(self, embedding, query, max_docs: int = 50, k: int = 10):
         if embedding is None:

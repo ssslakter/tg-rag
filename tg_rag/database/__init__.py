@@ -1,3 +1,5 @@
+import logging as l
+
 from .basic import SearchEngine
 from .elastic import ElasticConfig, ElasticEngine
 from .qdrant import QdrantConfig, QdrantEngine
@@ -12,9 +14,11 @@ configs = {
     "qdrant": QdrantConfig
 }
 
+log = l.getLogger(__name__)
 
-def get_db(embedder, name: str, **kwargs) -> SearchEngine:
-    cfg = configs[name](embedding_size=embedder.dim)
+def get_db(embed_dim, name: str, **kwargs) -> SearchEngine:
+    cfg = configs[name](embedding_size=embed_dim)
+    log.debug(f"Creating {name} engine with config: {cfg}")
     for k, v in kwargs.items():
         setattr(cfg, k, v)
     return engines[name](cfg)

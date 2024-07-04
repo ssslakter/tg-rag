@@ -12,3 +12,4 @@ class Config:
     ask_llm_query: bool = False
     max_docs: int = 8
     embedding_model: str = "cointegrated/rubert-tiny2"
+    only_text: bool = False
