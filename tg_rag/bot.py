@@ -10,7 +10,9 @@ from aiogram.types import Message
 from fastcore.all import call_parse
 
 from tg_rag.llm import LLM
+from tg_rag.preprocess.text_parsing import parse_book
 from tg_rag.utils import init_logger
+from tg_rag.preprocess.data_extraction import parse_file
 
 dp = Dispatcher()
 
@@ -35,8 +37,7 @@ async def command_start_handler(message: Message) -> None:
     """
     This handler receives messages with `/start` command
     """
-    await message.answer(f"Hello, {html.bold(message.from_user.full_name)}!")
-
+    await message.answer(f"Hello, {html.bold(message.from_user.full_name)}! Add your documents to the database.")
 
 @dp.message()
 async def rag_handler(message: Message) -> None:
@@ -67,6 +68,26 @@ async def rag_handler(message: Message) -> None:
         await message.answer("Unexpected error occurred. Please try again later.")
 
 
+@dp.message(Command("upload"))
+async def load_file(message: Message):
+    file_id = message.document.file_id
+    file = await bot.download(file_id)
+    fname = message.document.file_name
+    
+    ext = fname.split(".")[-1]
+    text = parse_file[ext](file)
+    
+    paragraphs = parse_book(text)
+    embs = embedder(paragraphs)
+    
+    db.add(embs, paragraphs, str(message.from_user.id))
+
+
+@dp.message(Command("clear"))
+async def clear_files(message: Message):
+    db.clear(str(message.from_user.id))
+
+
 @call_parse
 def main(db_name: str = "qdrant",  # "Database to use: elastic or qdrant"
          only_text: bool = False,  # "If True, only using full-text search"
@@ -80,7 +101,7 @@ def main(db_name: str = "qdrant",  # "Database to use: elastic or qdrant"
     from tg_rag.embedding import Embedder
     
     init_logger(log.name, level=l.DEBUG if v else l.INFO)
-    global llm, cfg, db, embedder
+    global llm, cfg, db, embedder, bot
     cfg = Config(embedding_model=embedding_model, api_url=api_url, model=model)
     
     if not only_text: 
