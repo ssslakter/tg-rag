@@ -32,8 +32,13 @@ class QdrantEngine(SearchEngine):
                                             ))
 
     def search(self, nickname, embedding, query, max_docs: int = 50):
-        # filter nickname
-        hits = self.client.search(self.cfg.collection_name, embedding, limit=max_docs)
+        hits = self.client.search(self.cfg.collection_name, embedding,
+                                  query_filter=models.Filter(
+                                      must=[models.FieldCondition(
+                                          key="nickname",
+                                          match=models.MatchValue(value=nickname))]),
+                                  limit=max_docs
+                                  )
         return zip(*((hit.payload["text"], hit.score) for hit in hits))
 
     def add(self, nickname: str, filename: str, embeddings: list, documents: list):
@@ -51,7 +56,15 @@ class QdrantEngine(SearchEngine):
     def clear(self, nickname: str):
         self.client.delete(self.cfg.collection_name, points_selector=models.FilterSelector(
             filter=models.Filter(
-                must=[
-                    models.Match(field="nickname", values=[nickname])
-                ])
+                must=[models.FieldCondition(key="nickname", match=models.MatchValue(value=nickname))])
         ))
+
+    def get_all(self, nickname: str):
+        result, _ = self.client.scroll(self.cfg.collection_name,
+                                       scroll_filter=models.Filter(
+                                           must=[models.FieldCondition(
+                                               key="nickname",
+                                               match=models.MatchValue(value=nickname))]
+                                       ), limit=1000, with_vectors=False, with_payload=True)
+        fnames = set(hit.payload["filename"] for hit in result)
+        return fnames

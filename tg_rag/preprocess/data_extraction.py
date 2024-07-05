@@ -1,9 +1,9 @@
 from io import BytesIO
 from typing import BinaryIO
-from pypdf import PdfReader
 from zipfile import ZipFile
 
 import requests
+from pypdf import PdfReader
 
 
 def download_book(url):
@@ -19,8 +19,8 @@ def read_txt(file: BinaryIO):
 
 
 def read_pdf(file: BinaryIO):
-    reader = PdfReader(file.read())
-    '\n'.join(page.extract_text() for page in reader.pages)
+    reader = PdfReader(file)
+    return '\n'.join(page.extract_text() for page in reader.pages)
     
     
 parse_file = {

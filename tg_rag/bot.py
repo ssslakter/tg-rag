@@ -4,17 +4,22 @@ import logging as l
 from aiogram import Bot, Dispatcher, html
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
-
+from aiogram import F
 from fastcore.all import call_parse
 
+from tg_rag.filters.file_filter import FileFilter
 from tg_rag.llm import LLM
+from tg_rag.preprocess.data_extraction import parse_file
 from tg_rag.preprocess.text_parsing import parse_book
 from tg_rag.utils import init_logger
-from tg_rag.preprocess.data_extraction import parse_file
+from tg_rag import upload
 
 dp = Dispatcher()
+dp.include_router(upload.rt)
+
 
 log = l.getLogger(__name__.split(".")[0])
 
@@ -26,7 +31,7 @@ question_system_prompt = """
 """
 
 answer_system_prompt = """
-Ответьте на вопрос, основываясь на извлеченных абзацах ниже, укажите номер(а) параграфа(ов) и их текст, подтверждающих ваш ответ.
+Ответьте на вопрос, основываясь на извлеченных абзацах ниже, укажите номер(а) параграфа(ов) в виде #1,#4 и т.д., подтверждающих ваш ответ.
 Если вопрос нельзя ответить на основе контекста, скажите "Я не знаю".
 Внимательно вчитывайся в смысл предложений. Отвечай на русском
 """
@@ -39,7 +44,45 @@ async def command_start_handler(message: Message) -> None:
     """
     await message.answer(f"Hello, {html.bold(message.from_user.full_name)}! Add your documents to the database.")
 
-@dp.message()
+
+@dp.message(Command("list"))
+async def list_files(message: Message):
+    files = db.get_all(str(message.from_user.id))
+    if not files:
+        await message.answer("No files uploaded")
+        return
+
+    await message.answer("\n".join([f"{i+1}. {f}" for i, f in enumerate(files)]))
+
+
+@dp.message(Command("clear"))
+async def clear_files(message: Message):
+    db.clear(str(message.from_user.id))
+    await message.answer("Cleared all files")
+
+
+@dp.message(upload.UploadFile.choosing_file, FileFilter())
+async def load_file(message: Message, state: FSMContext):
+    file_id = message.document.file_id
+    file = await bot.download(file_id)
+    fname = message.document.file_name
+
+    ext = fname.split(".")[-1]
+    text = parse_file[ext](file)
+
+    paragraphs = parse_book(text)
+    embs = embedder(paragraphs)
+
+    db.add(str(message.from_user.id), fname, embs, paragraphs)
+    await state.set_state(upload.UploadFile.asking_question)
+
+
+@dp.message(upload.UploadFile.choosing_file)
+async def load_file_error(message: Message):
+    await message.answer("Please upload a pdf or txt file")
+
+
+@dp.message(~F.text.startswith('/'))
 async def rag_handler(message: Message) -> None:
     log.info(f"Received message: {message.text}")
     if len(message.text) < 5 or len(message.text) > 500:
@@ -47,13 +90,13 @@ async def rag_handler(message: Message) -> None:
         return
     query = llm.prompt(message.text, question_system_prompt
                        ) if cfg.ask_llm_query else message.text
-    
+
     log.info(f"Query for db is: {query}")
 
     embedder = globals().get("embedder", None)
     if embedder is not None: emb = embedder(query)[0]
     else: emb = None
-    docs, scores = db.search(emb, query, cfg.max_docs)
+    docs, scores = db.search(str(message.from_user.id), emb, query, cfg.max_docs)
 
     log.info(f"Found {len(docs)} relevant paragraphs")
     log.debug(f"Scores are: {scores}")
@@ -68,24 +111,32 @@ async def rag_handler(message: Message) -> None:
         await message.answer("Unexpected error occurred. Please try again later.")
 
 
-@dp.message(Command("upload"))
-async def load_file(message: Message):
-    file_id = message.document.file_id
-    file = await bot.download(file_id)
-    fname = message.document.file_name
-    
-    ext = fname.split(".")[-1]
-    text = parse_file[ext](file)
-    
-    paragraphs = parse_book(text)
-    embs = embedder(paragraphs)
-    
-    db.add(embs, paragraphs, str(message.from_user.id))
+async def async_main(db_name: str, only_text: bool, embedding_model: str,
+                     api_url: str, model: str, v: bool):
+    from tg_rag.config import Config
+    from tg_rag.database import get_db
+    from tg_rag.embedding import Embedder
 
+    init_logger(log.name, level=l.DEBUG if v else l.INFO)
+    global llm, cfg, db, embedder, bot
+    cfg = Config(embedding_model=embedding_model, api_url=api_url, model=model)
 
-@dp.message(Command("clear"))
-async def clear_files(message: Message):
-    db.clear(str(message.from_user.id))
+    if not only_text:
+        log.info(f"Using {cfg.embedding_model} for embeddings")
+        embedder = Embedder(cfg.embedding_model)
+        dim = embedder.dim
+    else: dim = 1
+
+    log.info(f"Connecting to {db_name}")
+    db = get_db(dim, db_name, override=False)
+
+    log.info(f"Connecting to LLM on {cfg.api_url}")
+    llm = LLM(cfg)
+    bot = Bot(token=cfg.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+
+    await bot.delete_webhook(drop_pending_updates=True)
+    log.info("Starting the bot...")
+    await dp.start_polling(bot)
 
 
 @call_parse
@@ -96,29 +147,7 @@ def main(db_name: str = "qdrant",  # "Database to use: elastic or qdrant"
          model: str = "llama3",  # "Model to use for LLM"
          v: bool = False  # "Verbose mode"
          ):
-    from tg_rag.config import Config
-    from tg_rag.database import get_db
-    from tg_rag.embedding import Embedder
-    
-    init_logger(log.name, level=l.DEBUG if v else l.INFO)
-    global llm, cfg, db, embedder, bot
-    cfg = Config(embedding_model=embedding_model, api_url=api_url, model=model)
-    
-    if not only_text: 
-        log.info(f"Using {cfg.embedding_model} for embeddings")
-        embedder = Embedder(cfg.embedding_model)
-        dim = embedder.dim
-    else: dim = 1
-    
-    log.info(f"Connecting to {db_name}")
-    db = get_db(dim, db_name, override=False)
-    
-    log.info(f"Connecting to LLM on {cfg.api_url}")
-    llm = LLM(cfg)
-    log.info("Starting the bot...")
-    bot = Bot(token=cfg.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-
-    asyncio.run(dp.start_polling(bot))
+    asyncio.run(async_main(db_name, only_text, embedding_model, api_url, model, v))
 
 
 if __name__ == "__main__":
