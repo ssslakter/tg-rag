@@ -37,9 +37,18 @@ def merge_short_paragraphs(paragraphs, min_words=50, max_words=500):
 
     return result
 
+def split_long_paragraphs(paragraphs, max_words=100):
+    for p in paragraphs:
+        if count_words(p) > max_words:
+            yield from p.split(".")
+        else:
+            yield p
 
-def parse_book(book: str, max_words=50, min_words=20):
+
+def parse_book(book: str, max_words=50, min_words=40):
     paragraphs = [t for t in book.splitlines() if t != '']
     paragraphs = merge_dialogs(paragraphs, max_words)
+    paragraphs = list(split_long_paragraphs(paragraphs, 70))
     paragraphs = merge_short_paragraphs(paragraphs, min_words, max_words)
+    
     return paragraphs

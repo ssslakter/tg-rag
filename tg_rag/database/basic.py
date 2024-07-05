@@ -5,3 +5,4 @@ class SearchEngine:
     def get_all(self, nickname: str): raise NotImplementedError
     def add(self, nickname: str, filename: str, embeddings: list, documents: list): raise NotImplementedError
     def clear(self, nickname: str): raise NotImplementedError
+    def delete(self, nickname: str, filename: str): raise NotImplementedError

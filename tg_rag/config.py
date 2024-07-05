@@ -10,6 +10,6 @@ class Config:
     model: str = "llama3"
     bot_token: str = getenv("BOT_TOKEN", None)
     ask_llm_query: bool = False
-    max_docs: int = 8
+    max_docs: int = 4
     embedding_model: str = "cointegrated/rubert-tiny2"
     only_text: bool = False

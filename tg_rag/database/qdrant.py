@@ -39,9 +39,11 @@ class QdrantEngine(SearchEngine):
                                           match=models.MatchValue(value=nickname))]),
                                   limit=max_docs
                                   )
+        if not hits: return [], []
         return zip(*((hit.payload["text"], hit.score) for hit in hits))
 
     def add(self, nickname: str, filename: str, embeddings: list, documents: list):
+        log.info(f"Adding {len(embeddings)} documents to the collection from {filename}")
         for i in progress_bar(range(0, len(documents), self.cfg.bs)):
             ri = min(i + self.cfg.bs, len(documents))
             self._add_batch(nickname, filename, embeddings[i:ri], documents[i:ri])
@@ -68,3 +70,11 @@ class QdrantEngine(SearchEngine):
                                        ), limit=1000, with_vectors=False, with_payload=True)
         fnames = set(hit.payload["filename"] for hit in result)
         return fnames
+    
+    def delete(self, nickname: str, filename: str):
+        self.client.delete(self.cfg.collection_name, points_selector=models.FilterSelector(
+            filter=models.Filter(
+                must=[models.FieldCondition(key="nickname", match=models.MatchValue(value=nickname)),
+                      models.FieldCondition(key="filename", match=models.MatchValue(value=filename))]
+            )
+        ))

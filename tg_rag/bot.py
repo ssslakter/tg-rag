@@ -1,24 +1,23 @@
 import asyncio
 import logging as l
 
-from aiogram import Bot, Dispatcher, html
+from aiogram import Bot, Dispatcher, F, html
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.filters import Command, CommandObject, CommandStart
+from aiogram.filters import Command, CommandStart, CommandObject, StateFilter, and_f, or_f
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
-from aiogram import F
 from fastcore.all import call_parse
 
+from tg_rag import state_machine as sm
 from tg_rag.filters.file_filter import FileFilter
 from tg_rag.llm import LLM
-from tg_rag.preprocess.data_extraction import parse_file
+from tg_rag.preprocess.data_extraction import download_book, parse_file
 from tg_rag.preprocess.text_parsing import parse_book
 from tg_rag.utils import init_logger
-from tg_rag import upload
 
 dp = Dispatcher()
-dp.include_router(upload.rt)
+dp.include_router(sm.rt)
 
 
 log = l.getLogger(__name__.split(".")[0])
@@ -31,37 +30,77 @@ question_system_prompt = """
 """
 
 answer_system_prompt = """
-Ответьте на вопрос, основываясь на извлеченных абзацах ниже, укажите номер(а) параграфа(ов) в виде #1,#4 и т.д., подтверждающих ваш ответ.
+Пользователь задает вопрос о книге.
+Ответьте на вопрос, основываясь на извлеченных абзацах ниже, укажите номера параграфов в виде #1, #2, #4 и т.д., подтверждающих ваш ответ.
 Если вопрос нельзя ответить на основе контекста, скажите "Я не знаю".
 Внимательно вчитывайся в смысл предложений. Отвечай на русском
 """
 
 
-@dp.message(CommandStart())
-async def command_start_handler(message: Message) -> None:
+@dp.message(or_f(CommandStart(), Command("help")))
+async def command_start_handler(message: Message):
     """
     This handler receives messages with `/start` command
     """
-    await message.answer(f"Hello, {html.bold(message.from_user.full_name)}! Add your documents to the database.")
+    info ='''
+    Этот бот позволяет загружать документы и искать в них информацию.
+    Список доступных команд:
+    /upload - загрузить документ
+    /list - список загруженных документов
+    /delete <num> - удалить документ по номеру
+    /clear - удалить все документы
+    /help - отобразить это сообщение
+    /default - загрузить книгу по умолчанию (Мастер и Маргарита)
+    После загрузки документов можно задать текстом вопрос. Поиск будет производиться по всем загруженным документам.
+    '''
+    await message.answer(text=info, parse_mode=ParseMode.MARKDOWN)
+    
+
+@dp.message(Command("default"))
+async def load_default_book(message: Message):
+    await message.answer("Загрузка книги по умолчанию...")
+    text = download_book(cfg.book_url)
+    paragraphs = parse_book(text)
+    embs = embedder(paragraphs)
+    db.add(str(message.from_user.id), "Master_i_Margarita.txt", embs, paragraphs)
+    await message.answer("Книга загружена.")
 
 
 @dp.message(Command("list"))
-async def list_files(message: Message):
+async def list_files(message: Message, state: FSMContext):
     files = db.get_all(str(message.from_user.id))
     if not files:
         await message.answer("No files uploaded")
         return
-
+    log.debug(f"Files: {files}")
+    await state.update_data(files=list(files))
+    await state.set_state(sm.ListState.got_list)
     await message.answer("\n".join([f"{i+1}. {f}" for i, f in enumerate(files)]))
+    
+
+@dp.message(sm.ListState.got_list, Command("delete"))
+async def delete_file(message: Message, command: CommandObject, state: FSMContext):
+    files = (await state.get_data()).get("files")
+    if command.args is None:
+        await message.answer("Указать номер файла для удаления. /delete <номер>", parse_mode=ParseMode.MARKDOWN)
+    try:
+        number = int(command.args)
+        assert 0 < number <= 10
+    except TypeError or AssertionError:
+        await message.answer("Некорректный номер файла")
+        return
+    db.delete(str(message.from_user.id), files[number-1])
+    await state.clear()
+    await message.answer("Файл удален")
 
 
 @dp.message(Command("clear"))
 async def clear_files(message: Message):
     db.clear(str(message.from_user.id))
-    await message.answer("Cleared all files")
+    await message.answer("Все файлы удалены.")
 
 
-@dp.message(upload.UploadFile.choosing_file, FileFilter())
+@dp.message(sm.UploadFile.choosing_file, FileFilter())
 async def load_file(message: Message, state: FSMContext):
     file_id = message.document.file_id
     file = await bot.download(file_id)
@@ -74,15 +113,15 @@ async def load_file(message: Message, state: FSMContext):
     embs = embedder(paragraphs)
 
     db.add(str(message.from_user.id), fname, embs, paragraphs)
-    await state.set_state(upload.UploadFile.asking_question)
+    await state.clear()
 
 
-@dp.message(upload.UploadFile.choosing_file)
+@dp.message(sm.UploadFile.choosing_file)
 async def load_file_error(message: Message):
-    await message.answer("Please upload a pdf or txt file")
+    await message.answer("Загрузите файл в формате txt или pdf.")
 
 
-@dp.message(~F.text.startswith('/'))
+@dp.message(and_f(~F.text.startswith('/'), ~FileFilter()))
 async def rag_handler(message: Message) -> None:
     log.info(f"Received message: {message.text}")
     if len(message.text) < 5 or len(message.text) > 500:
@@ -103,10 +142,15 @@ async def rag_handler(message: Message) -> None:
 
     concat_docs = "\n\n".join([f"### {i+1}\n\n{s}" for i, s in enumerate(docs)])
     log.debug(f"Found docs:\n{concat_docs}")
-    ans = llm.prompt(message.text, message.text + answer_system_prompt + concat_docs)
+    ans = llm.prompt(message.text, answer_system_prompt + concat_docs)
     log.debug(f"Answer is: {ans}")
     try:
-        await message.reply(ans)
+        res = await message.reply(ans)
+        import re
+        regex = re.compile(r"#(\d+)")
+        numbers = [int(i) for i in regex.findall(ans)]
+        quotes = [f'### {i}' + '\n' + docs[i-1] for i in numbers]
+        await res.reply("Цитаты\n\n".join(quotes))
     except TypeError:
         await message.answer("Unexpected error occurred. Please try again later.")
 
